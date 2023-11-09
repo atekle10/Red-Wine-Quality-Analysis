@@ -43,7 +43,3 @@ License
 
 This project is open-sourced and available under the MIT License.
 
-Contact
-
-For any inquiries or feedback, please contact Abel Tekle at your-email@example.com.
-
