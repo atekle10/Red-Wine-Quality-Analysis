@@ -1,0 +1,892 @@
+---
+title: "Red WineQuality Project"
+author: "Abel Tekle"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, echo=FALSE}
+# Load required packages
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+```
+
+```{r, echo=FALSE}
+# Load the dataset
+wine_data <- read.csv("winequality-red.csv", sep = ";")
+```
+
+# Part 1
+
+### Introduction
+
+The data set we chose to analyze is the Red Wine quality data set from the Wine quality data set.
+It is from the UC Irvine Machine Learning repository.
+It focuses on various characteristics of red wine, such as acidity levels, sugar content, and pH levels, along with a quality rating(from professional tasters).
+Our aim is to understand the descriptive statistics of these variables and examine their interrelationships to gain preliminary insights into what constitutes a high rating.
+
+#### Variables Description:
+
+-   **Fixed Acidity**: The amount of tartaric acid in wine, affecting the hardness and mouth feel.
+
+    -   continuous RV, Quantitative
+
+-   **Volatile Acidity**: The amount of acetic acid in wine, which at too high a level can lead to an unpleasant, vinegar-like taste.
+
+    -   continuous RV , Quantitative
+
+-   **Citric Acid**: Found in small quantities, it adds freshness and flavor to wines.
+
+    -   continuous RV, Quantitative
+
+-   **Residual Sugar**: The amount of sugar remaining after fermentation stops; it's rare to find wines with less than 1 gram/liter, and -wines with greater than 45 grams/liter are considered sweet.
+
+    -   continuous RV, Quantitative
+
+-   **Chlorides**: The amount of salt in the wine.
+
+    -   continuous RV, Quantitative
+
+-   **Free Sulfur Dioxide**: The free form of SO2 present in the wine; it prevents microbial growth and the oxidation of wine.
+
+    -   continuous RV, Quantitative
+
+-   **Total Sulfur Dioxide**: The amount of free and bound forms of S02; in low concentrations, SO2 is mostly undetectable, while at higher concentrations, it has a burnt match smell.
+
+    -   continuous RV, Quantitative
+
+-   **Density**: The density of the wine, which can give an idea about the alcohol content and sweetness.
+
+    -   continuous RV, Quantitative
+
+-   **pH**: Describes how acidic or basic a wine is on a scale from 0 (very acidic) to 14 (very basic); most wines are between 3-4.
+
+    -   continuous RV, Quantitative
+
+-   **Sulphates**: A wine additive that contributes to SO2 levels and acts as an antimicrobial and antioxidant.
+
+    -   continuous RV, Quantitative
+
+-   **Alcohol**: The percentage of alcohol in the wine.
+
+    -   continuous RV, Quantitative
+
+-   **Quality**: The quality of the wine, judged by experts
+
+    -   discrete RV, Quantitative
+
+        **Observational Unit** : Each row in the data set represents a unique wine sample for which the above variables have been measured.
+        The names of the wines have been excluded, observational units are numbered 1-1599
+
+#### Data Sampling 
+
+```{r, echo=FALSE}
+
+# Randomly sample 500 observations from the dataset
+wine_data_sampled <- sample_n(wine_data, 500)
+
+```
+
+Since we are instructed to have at least 2 categorical variables we will need to convert two of these variables from quantitative to categorical.
+For this, we examined the data set and looked at the distributions and summary statistics to see which variables would be most suitable for these conversions.
+We will also randomly sample 500 observations from the data set for analysis
+
+<br><br>
+
+```{r, echo=FALSE}
+wine_data_sampled$categorical_pH <- cut(wine_data_sampled$pH, 
+                                       breaks = c(-Inf, 3.21, 3.31, 3.41, Inf),
+                                       labels = c('Very Low', 'Low', 'Medium', 'High'),
+                                       include.lowest = TRUE)
+
+wine_data_sampled$categorical_sulphates <- cut(wine_data_sampled$sulphates, 
+                                              breaks = c(-Inf, 0.56, 0.62, 0.73, Inf),
+                                              labels = c('Very Low', 'Low', 'Medium', 'High'),
+                                              include.lowest = TRUE)
+# Remove original 'pH' and 'sulphates' columns
+wine_data_sampled <- wine_data_sampled %>% 
+                     select(-pH, -sulphates)
+
+
+#head(wine_data_sampled)
+
+```
+
+### EDA
+
+```{r, echo=FALSE}
+#Display summary staistics of each variable 
+skimr::skim(wine_data_sampled)
+```
+
+The skim function used above helped to summarize the statistics of the data set in a table.
+The column n_missing displays the number of missing values of each variable in the data set, while complete_rate gives a percentage of how many values are present, rather than missing, for each variable.
+The sd column gives the standard deviation of each variable, while, p0, p25, p50, p75, and p100, represent the respective quartiles.
+Finally, the hist column displays a miniaturized histogram of each variable**.**
+
+<br><br>
+
+```{r, echo=FALSE, warning=FALSE}
+# Create histograms for each variable
+# Get the names of numeric columns
+features <- c("fixed.acidity","chlorides")
+# Loop through each numeric feature to create a plot
+for (feature in features) {
+  print(
+    ggplot(wine_data_sampled, aes_string(x = feature)) +
+      geom_histogram(aes(y = after_stat(density)), binwidth = diff(range(wine_data_sampled[[feature]])) / 30) +
+      geom_density(alpha = 0.1, fill = "#FF6666") +
+      ggtitle(paste("Distribution of", feature))
+  )
+}
+```
+
+The above plots give us the distributions of the measurements of fixed acidity and the amount of chlorides in the 500 samples of wine.
+While both plots are left-skewed, the first plot, displaying the distribution of fixed acidity, has a wider range of measurements in the 500 samples.
+The second plot, however, is much narrower, suggesting that the majority of the samples have a similar amount of chlorides.
+
+<br><br>
+
+```{r, echo=FALSE}
+# Calculate the correlation matrix
+cor_matrix <- cor(select_if(wine_data_sampled, is.numeric))
+
+# Melt the correlation matrix for ggplot2
+melted_cor_matrix <- melt(cor_matrix)
+
+# Remove duplicates (keep upper triangle, excluding diagonal)
+melted_cor_matrix <- melted_cor_matrix[upper.tri(cor_matrix, diag = TRUE), ]
+
+# Filter significant correlations to reduce clutter (optional)
+melted_cor_matrix <- subset(melted_cor_matrix, value > 0.2 | value < -0.2)
+
+# Create the heatmap
+ggplot(data = melted_cor_matrix, aes(x = Var1, y = Var2)) +
+  geom_tile(aes(fill = value), color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), name = "Correlation") +
+  geom_text(aes(label = sprintf("%.2f", value)), vjust = 1, size = 4) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  ggtitle("Correlation Heatmap") +
+  xlab("Variables") +
+  ylab("Variables") +
+  coord_fixed()
+```
+
+The Correlation Heat map summarizes the relationship each variable in our data set has with each other.
+We decided to only show correlations +- 0.3 level to rule out any non-statistically significant correlations.
+A red color signifies a positive correlation, while a purple color signifies a negative correlation.
+
+-   Fixed.acidity and density have a high positive correlation
+
+-   Fixed.acidity and citric acid have a high positive correlation
+
+-   volatile acidity and citric acid have a high negative correlation
+
+-   volatile acidity and quality have a high negative correlation
+
+-   citric acid and density have a high positive correlation
+
+-   residual sugars and density have a high positive correlation
+
+-   density and alcohol have a high negative correlation
+
+-   alcohol and quality have a high positive correlation
+
+<br><br>
+
+```{r, echo=FALSE, message=FALSE}
+# Plotting the relationship between alcohol content and quality
+ggplot(wine_data_sampled, aes(x = alcohol, y = quality)) +
+  geom_point(aes(color = quality), alpha = 0.1) +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  ggtitle("Relationship between Alcohol Content and Wine Quality") +
+  xlab("Alcohol Content") +
+  ylab("Wine Quality") +
+  theme_minimal()
+
+```
+
+From the plot above we can see the relationship between Alcohol Content and quality.
+The plot shows that most of the wines lie between scores 5-7, and alcohol content ranges from 9-13.
+This is evident by the percentiles we found earlier as well.
+The highest rated wines, with a rating of 8 are skewed right with most lying between the 11-14 alcohol content range.
+The lowest rated wines lie between the 9-11 range.
+This is pretty interesting because it aligns with the assumption that bad quality wines may be mass produced and therefore they may not be getting an adequate amount of time to ferment to help them develop a higher alcohol content.
+<br><br>
+
+```{r, echo=FALSE, message=FALSE}
+# Plotting the relationship between residual sugar and density
+ggplot(wine_data, aes(x = residual.sugar, y = density)) +
+  geom_point(aes(color = density), alpha = 0.1) +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  ggtitle("Relationship between Residual Sugar and Density") +
+  xlab("Residual Sugar") + ylab("Density") +  scale_x_log10()   # Applying log scale to x-axis
+```
+
+Above we can see the relationship between Sugar content in the wine and the density of the wine.
+The scatter plot shows that wines with higher residual sugar content are more likely to have a higher density.
+This is not a surprising outcome.
+Typically, the higher amount of dissolved solid in a solution, the higher the density.
+
+<br><br>
+
+```{r, echo=FALSE, message=FALSE}
+ggplot(wine_data_sampled, aes(x = categorical_pH, y = quality)) +
+  geom_boxplot(aes(fill = categorical_pH)) +
+  geom_jitter(position=position_jitter(width=0.1), alpha=0.1) +
+  ggtitle("Distribution of Wine Quality Across pH Categories") +
+  xlab("pH Category") +
+  ylab("Wine Quality") 
+
+```
+
+The box plot presents the distribution of wine quality scores across various pH categories: 'Very Low', 'Low', 'Medium', and 'High'.
+Each box represents the interquartile range (IQR), encapsulating the middle 50% of the quality scores within each pH category.
+We can see there is minimal correlation between the pH of a wine and its quality.
+This is interesting because pH has a huge impact on the taste and smell of wine, but this plot shows that it may not be the determining factor in the end quality rating of the wine.
+
+# Part 2
+
+### Hypothesis testing
+
+The red wine data set contains a collection of red wine samples with factors that make up the wine such as alcohol content, pH level, and residual sugar quantity, along with a quality score as rated by critics.
+The goal of this step of the project was to determine if there is a linear relationship between two continuous quantitative variables.
+Looking at the heat map created for step one of the project, the two variables that were chosen for analysis were "alcohol" and the "density" of the wine, as they have a relatively high correlation on the map.
+The alcohol content variable, or "alcohol" in the data set, is the percentage of alcohol that makes up each wine.
+
+The null hypothesis addressed is that the alcohol content and the density of wines are not linearly related, while the alternative hypothesis is that the two variables are linearly related.
+In order to reject the null hypothesis, $\beta_1$ needs to be significantly different than zero: $$H_0: \beta_1 = 0 \quad \text{vs.} \quad H_1: \beta_1 \neq 0$$
+
+#### Fitting linear model
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+#linear model
+
+wine_data_sampled$alcoholUpdate <- wine_data_sampled$alcohol / 100
+
+fit_model <- lm(density ~ alcoholUpdate, data = wine_data_sampled)
+#summary(fit_model)
+
+#print(fit_model)
+```
+
+For ease, since alcohol is listed as a percentage rather than a decimal, a new variable for the data set was created, called alcoholUpdate, where the values are equal to the values of alcohol divided by 100.
+This does not change the model other than making the alcohol content values and the resulting statistics from the model more readable.
+
+With density as the response variable, and alcoholUpdate as the predictor, the following fitted linear model is produced(rounded to 3 decimal places): $$\text{density} = 1.004 - 0.071 * \text{alcoholUpdate}$$This suggests that for every one unit increase in alcohol content, the density decreases by $0.071 \ \text{g/dm}^3$.
+This means that every percentage increase in alcohol of the wine, the density decreases by $0.00071 \ \text{g/dm}^3$.
+Considering that all of the wines in the sampled data set have a density less than $1 \ \text{g/dm}^3$, this is not a very small change.
+
+#### Confidence Intervals 
+
+To conduct the hypothesis test stated above, testing if $\beta_1$ is significantly different than zero, which suggests that alcohol and density have a linear relationship, a 95% confidence interval of the true population value of $\beta_1$ is made:
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+#creating a CI 
+confidence_interval1 <- confint(fit_model, "alcoholUpdate", level = 0.95)
+#print(confidence_interval1)
+
+```
+
+The confidence interval has a lower bound of -0.08488468 and an upper bound of -0.05762622, suggesting at the 95% confidence level, $\beta_1$ is significant, as the interval does not contain 0.
+This shows us that the two variables have a linear relationship, and the null hypothesis can be rejected.
+
+### Check of linear assumptions 
+
+Before the analysis of a linear model between the alcohol content and density can take place, the assumptions for linear regression must be checked.
+This can be done through a series of plots.
+
+To check the linearity assumption, $\mathbb{E}[\varepsilon_i] = 0$, a scatter plot was created with the values of alcoholUpdate on the x-axis, and the values of density on the y-axis:
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Plotting the relationship between alcohol content and quality
+
+ggplot(wine_data_sampled, aes(x = alcoholUpdate, density)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  ggtitle("Relationship between Alcohol Content and Density") +
+  xlab("Alcohol Content") +
+  ylab("Density") +
+  theme_minimal()
+
+
+```
+
+Based on how the distance between the plot points and the fitted line, or the error terms, are evenly spread across both sides of the line, the alcohol content and density of the wines do appear to fulfill the linearity assumption.
+
+A plot is formed with the residuals of the model on the y-axis, and predicted values on the x-axis to show the assumptions of homoscedasticity, or equal variance, and independence:
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+# Extract predicted values from the model
+predicted_values <- predict(fit_model)
+
+# Calculate residuals
+residuals <- residuals(fit_model)
+
+ggplot(wine_data_sampled, aes(x = predicted_values, residuals)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  ggtitle("Predicted Values vs. Residuals") +
+  xlab("Predicted Values") +
+  ylab("Residuals") +
+  theme_minimal()
+
+
+
+```
+
+The plot shows a fairly random scatter, with no distinguishable pattern, suggesting that the variances of the error terms are constant, and the homoscedasticity assumption is fulfilled.
+Additionally, since the correlation of the points is approximately zero, suggesting that there is no correlation between the predicted values of density and the residuals of the model, the independence assumption is satisfied by the model.
+While the residuals vs. predicted values plot suggests that the assumptions are met, the $R^2$ value of the linear model is 0.1748, which suggests there are other factors contributing to density.
+This makes sense, as wine is made up of many different components that could affect the density, rather than just alcohol content, as seen in the model.
+Additionally, we attempted to apply a log transformation to see if it would help the model become more linear, but we actually found that the transformation slightly worsened our results.
+$R^2$ decreased slightly while the range of residuals increased insignificantly.
+
+Additionally, the distribution of the residuals of the model were checked to see if they resembled a normal distribution, using a Q-Q plot:
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Q-Q plot of residuals
+qqnorm(residuals(fit_model), main = "QQ Plot of Residuals", xlab = "Theoretical Quantiles", ylab = "Sample Quantiles")
+qqline(residuals(fit_model), col = "blue", lwd = 1)
+
+```
+
+In the Q-Q plot analysis, the residuals were largely consistent with the expected pattern for a normal distribution, except for deviations at the tails.
+These deviations suggest the presence of outliers or extreme values in the data set.
+These outliers could potentially have a disproportionate effect on the regression analysis, exerting leverage and possibly skewing the results.
+While such deviations from normality do not necessarily invalidate the regression model, they do warrant further investigation.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+# mean of alcohol content 
+interesting_value <- mean(wine_data_sampled$alcoholUpdate)
+
+# Create a new data frame with just the interesting value
+new_data <- data.frame(alcoholUpdate = interesting_value)
+
+# Calculate confidence intervals 
+intervals <- predict(fit_model, newdata = new_data, interval = "confidence", level = 0.95)
+
+# Calculate prediction intervals
+prediction_intervals <- predict(fit_model, newdata = new_data, interval = "prediction", level = 0.95)
+#cat("Confidence Intervals- for Density at Mean Alcohol Content:\n")
+#print(intervals)
+#cat("Prediciton Intervals- for Density at Mean Alcohol Content:\n")
+#print(prediction_intervals)
+
+
+```
+
+Analyzing the relationship between alcohol content and wine density, we centered on the mean alcohol content to compute the mean density prediction.
+The 95% confidence interval was extremely precise (0.99657, 0.9968543), suggesting a strong estimation of the mean density at this average alcohol content.
+Conversely, the prediction interval was broader, (0.9935308, 0.9998935), accounting for individual sample variability and indicating where a random wine's density might lie, given the mean alcohol content.
+The tight confidence interval conveys robustness in our model's ability to predict average density, while the wider prediction interval acknowledges the expected fluctuations in individual observations.
+
+In conclusion, the analysis showed a significant inverse relationship between alcohol content and density of the wine samples.
+The linear model explains approximately 17.48% of the variability in wine density, which suggests that other factors also contribute to density.
+The residual plots did not reveal any obvious patterns, indicating that the model's assumptions are reasonable.
+The data largely confirmed expectations, but the relatively low $R^2$ value suggests that further investigation could reveal more about the factors influencing wine density.
+Future analysis could explore the effects of other variables, such as acidity or sugar content on the density of wine.
+
+# Part 3
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# Load required packages
+library(GGally)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(caret)
+library(broom)
+library(car)
+
+
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Load the dataset
+wine_data <- read.csv("winequality-red.csv", sep = ";")
+
+# Randomly sample 500 observations from the dataset
+set.seed(123)
+wine_data_sampled <- sample_n(wine_data, 500)
+wine_data_sampled$alcoholUpdate <- wine_data_sampled$alcohol / 100
+
+
+# Use createDataPartition to create indices for a balanced split
+set.seed(123)
+partition_indices <- createDataPartition(wine_data_sampled$quality, p = 0.8, list = FALSE)
+
+# Create training and test sets using the indices
+training_set <- wine_data_sampled[partition_indices, ]
+test_set <- wine_data_sampled[-partition_indices, ]
+
+
+```
+
+### Introduction
+
+The Red Wine Quality dataset, obtained from the UCI Machine Learning Repository, is a dataset that includes various chemical properties of red wines, such as acidity, alcohol content, and quality ratings.
+The goal of this step was to determine variables that may be best suited to predict the response variable, the quality of red wine. 
+  
+
+Reference: UCI Machine Learning Repository - Red Wine Quality:  <https://archive.ics.uci.edu/ml/datasets/Wine+Quality>
+
+### Pairs Plot analysis
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+subset_data <- wine_data_sampled[, c("density", "alcohol", "sulphates", "quality")]
+
+#Create a pairs plot
+
+pairs_plot <- ggpairs(subset_data, title = "Pairs Plot of Explanatory and Response Variables")
+
+print(pairs_plot)
+
+```
+
+To determine relationships between the response and predictor variables, a pairs plot was created using the 'ggpairs()' function.
+Notably, the correlations between the alcohol content and quality rating, the sulphates and quality rating, and the alcohol content and sulphates were relatively high when compared to the correlations between other variables and the response, and the correlations between the different predictors.
+A log transformation on a subset of the explanatory variables was attempted, however this did not prove to impact the fit of the model positively.
+
+As alcohol appeared to have the highest correlation with the target variable, quality, two computational models were chosen to look at.
+The first was a model with quality as the response variable, and alcohol and sulphates as the predictors:
+
+$Quality_i = 1.39 + 0.35Alcohol_i + 0.85Sulphates_i$.
+
+The second model was similar, however the predictors used were alcohol and density:
+
+$Quality_i = -59.93 + 0.41Alcohol_i + 61.44Density_i$.
+
+We opted to not use any interaction variables do the negligible impact it had on the strength of the models, and there increased complexity of interpreting the results.
+
+### Computational Models
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Define models for comparison
+model1 <- lm(quality ~ alcohol + sulphates, data = training_set)
+model2 <- lm(quality ~ alcohol + density, data = training_set) 
+
+# Cross-validation to compare models
+cv_model1 <- train(quality ~ alcohol + sulphates, data = training_set, method = "lm", trControl = trainControl(method = "cv", number = 10))
+cv_model2 <- train(quality ~ alcohol + density, data = training_set, method = "lm", trControl = trainControl(method = "cv", number = 10))
+
+summary(cv_model1)
+summary(cv_model2)
+
+```
+
+Given these points, model 1 seems to be a marginally better model, as indicated by the lower residual standard error of 0.68 and higher $R^2$ value of 0.27, compared with model 2 RSE of 0.69 and $R^2$ value of 0.26 .
+Thus we will proceed with model 1.
+
+### Statistical Model
+
+Next, a statistical method was used to select variables to use in a seperate model.
+The method chosen was stepwise selection, which step-by-step selected the best variables for a model based on the training data.
+This model included the volatile acidity level, amount of residual sugars, sulfur dioxide level, amounts of sulphates, and alcohol content as the predictors.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+
+# Create a full model with all potential predictors
+full_model <- lm(quality ~ ., data = training_set)
+
+# Apply stepwise selection
+stepwise_model <- step(full_model, direction = "both")
+
+
+final_model_summary <- summary(stepwise_model)
+print(final_model_summary)
+
+
+
+
+
+```
+
+The Stepwise model has a $R^2$ and Residual standard error that is much better then model 1 ( the chosen computational model ) .
+Comparatively :
+
+-   The Stepwise model exhibits a higher $R^2$ value of 0.333 compared to Model 1's $R^2$ value of 0.2709.
+    This indicates that the Stepwise model explains more variance in the quality of wine than Model 1, making it a better fit for the data.
+
+-   The Residual Standard Error (RSE) for the Stepwise model is 0.6526, which is lower than Model 1's RSE of 0.6842.
+    A lower RSE indicates that the Stepwise model's predictions are closer to the actual values, which further supports its selection over Model 1.
+
+Lets now examine the residuals vs fitted values plot to further explore the traits of the Stepwise model.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(training_set, aes(x = fitted(stepwise_model), y = residuals(stepwise_model))) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  xlab("Fitted Values") +
+  ylab("Residuals") +
+  ggtitle("Residuals vs Fitted Values for Model 1")
+```
+
+The residuals plot for the Stepwise model shows the differences between the observed quality scores and those predicted by the model.
+The red line represents a "loess" fit to the residuals, which should ideally be flat if the model's assumptions are fully met.
+However, the curve in the red line suggests that there are systematic deviations from the model's predictions, particularly evident at the extremes of fitted values.
+This could mean that the relationship between the predictors and response is not perfectly linear or that other variables not included in the model could better explain the variability.
+
+From the analysis **we have concluded that we should move forward with the Stepwise model** as it represents the data more accurately then the computational models.
+
+### Interpret Coefficients
+
+**Intercept**: The estimated intercept is 2.672437.
+This is the expected value of the quality of wine when all other predictors are held at zero.
+The intercept is significant (p \< 0.001), indicating that there is a strong baseline effect on the quality rating even before considering the variables.
+
+**Acidity**: Each unit increase in volatile acidity is associated with a decrease of about 0.96 in the quality score.
+This is a significant predictor (p \< 0.001), indicating that as the volatile acidity increases, the quality of wine tends to decrease.
+
+**Residual Sugar**: Each unit increase in residual sugar is associated with an increase of about 0.066 in the quality score.
+This predictor is also statistically significant (p \< 0.01), suggesting a positive association between residual sugar and wine quality.
+
+**Total Sulfur Dioxide**: Each unit increase in total sulfur dioxide is associated with a decrease of about 0.003 in the quality score.
+This effect is significant (p \< 0.01), although the magnitude of the effect is quite small.
+
+**Sulphates**: Each unit increase in sulphates is associated with an increase of about 0.607 in the quality score.
+This is statistically significant (p \< 0.01), indicating a positive relationship between sulphates and wine quality.
+
+**Alcohol**: Each unit increase in alcohol is associated with a increase of 0.29 in the quality score.
+This is highly significant (p \< 0.001), highlighting alcohol as a strong predictor of wine quality.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Use model to make predictions on the test set
+test_predictions <- predict(stepwise_model, newdata = test_set)
+
+# Calculate R-squared for test set
+SSE_test <- sum((test_set$quality - test_predictions)^2)
+SST_test <- sum((test_set$quality - mean(test_set$quality))^2)
+r_squared_test <- 1 - SSE_test/SST_test
+
+print(r_squared_test)
+
+# Number of observations in test set
+n <- nrow(test_set)
+
+# Number of predictors in the model 
+p <- length(coef(stepwise_model)) - 1
+
+# Calculate adjusted R-squared for test data
+adjusted_r_squared_test <- 1 - ((1 - r_squared_test) * (n - 1) / (n - p - 1))
+
+print(adjusted_r_squared_test)
+
+```
+
+#### R values on test data
+
+The $R^2$ for the test data is 0.2801262 the adjusted $R^2$ is 0.2414233.
+since our $R^2$ is 0.2801262 that signifies that roughly 28% of the variability in quality can be attributed to the predictors in the chosen model.
+A high $R^2$ doesn't necessarily imply that the model will accurately describe the whole population because of the variability in selection between training and test data.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+# Calculate residuals for test data
+test_residuals <- test_set$quality - test_predictions
+
+# Residuals plot
+plot(test_set$quality, test_residuals, 
+     main = "Residuals Plot", 
+     xlab = "Observed Values", 
+     ylab = "Residuals")
+abline(h = 0, col = "red")
+
+
+# Influence plot
+influencePlot(stepwise_model, main = "Influence Plot")
+
+
+```
+
+**Influence Plot Analysis:** The influence plot visualizes the leverage and influence of each observation in the model.
+The size of the circles represents the Cook's distance for each observation, which is a measure of how much an observation influences the regression coefficients.
+
+-   Observations 65, 269, 408, 228, and 129 appear to be particularly influential based on their Cook's distance, which may suggest they are outliers or have high leverage.
+
+-   Further analysis of these observations have showed us they are in fact valid observations, although outliers from the norm.
+    So we will not be removing them and refitting a model
+
+**Residuals Plot Analysis:** Ideally, the points should be randomly scattered around the horizontal line at zero, indicating that the residuals have a constant variance and the model's assumptions are met.
+
+-   Most points reside randomly around the Zero line
+
+-   Tail-ends are slightly non constant, the plot overall does show constant variance
+
+#### Model Interpretation
+
+The stepwise model's selected variables suggest a nuanced interplay in predicting wine quality.
+The significance of variables like volatile acidity and alcohol align with conventional wisdom in enology, where the balance of acidity and alcohol content are known to impact taste and consequently, quality perception.
+The fact that sulphates and residual sugar remained in the model hints at their roles in the preservation and balance of flavors, which are crucial to a wine's overall profile.
+Total sulfur dioxide's inclusion likely speaks to its importance in preventing oxidation and maintaining wine's freshness.
+The dropping of other variables might indicate either a lesser direct impact on quality or a potential redundancy due to correlation with the included variables; for instance, citric acid's exclusion could be because its effect is captured by volatile acidity, which also relates to the wine's overall acidity profile.
+This refinement of variables through stepwise selection provides a more interpretable model, honing in on factors that best predict quality while avoiding multicollinearity that could obscure the true effect of each predictor.
+
+#### Confidence Intervals
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+# Selecting a combination of X values
+x_values <- data.frame(volatile.acidity = mean(test_set$volatile.acidity), 
+                       residual.sugar = mean(test_set$residual.sugar),
+                       total.sulfur.dioxide = mean(test_set$total.sulfur.dioxide),
+                       sulphates = mean(test_set$sulphates),
+                       alcohol = mean(test_set$alcohol))
+
+# Calculate intervals
+predicted_intervals <- predict(stepwise_model, newdata = x_values, interval = "prediction")
+confidence_intervals <- predict(stepwise_model, newdata = x_values, interval = "confidence")
+
+# Reporting intervals
+print(predicted_intervals)
+print(confidence_intervals)
+
+print(mean(test_set$quality))
+
+```
+
+Based on the mean values of the predictors of the test data, prediction interval and a confidence interval were formed.
+At the 95% level, we can expect the quality of a new wine sample to fall between the values (4.331623, 6.901042) provided by the prediction interval.
+The confidence interval (5.550819, 5.681846) gives a narrower range that estimates the average quality score for the population of wines.
+As expected, the confidence interval is more precise as it does not account for the individual variations of each wine sample.
+
+### Summary
+
+In conclusion, it was found that the statistical stepwise approach of determining predictors was the most accurate way of modeling the red wine dataset.
+While many factors may influence the quality of red wine, the levels of volatile acidity, sulfur dioxide, and alcohol content, along with the amount of residual sugars and sulphates proved to be the most impactful factors in rating the wine.
+This was further evident based on the accuracy of the prediction and confidence intervals of the mean rating to the true average quality of 5.62.
+
+# Part 4
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load required packages
+library(glmnet)
+library(GGally)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(caret)
+library(broom)
+library(car)
+library(tidyverse)
+library(neuralnet)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# Load the dataset
+wine_data <- read.csv("winequality-red.csv", sep = ";")
+
+# Randomly sample 500 observations from the dataset
+set.seed(123)
+wine_data_sampled <- sample_n(wine_data, 500)
+#wine_data_sampled$alcoholUpdate <- wine_data_sampled$alcohol / 100
+
+
+# Use createDataPartition to create indices for a balanced split
+set.seed(123)
+partition_indices <- createDataPartition(wine_data_sampled$quality, p = 0.8, list = FALSE)
+
+# Create training and test sets using the indices
+training_set <- wine_data_sampled[partition_indices, ]
+test_set <- wine_data_sampled[-partition_indices, ]
+
+
+```
+
+## Introduction
+
+The Red Wine Quality dataset, obtained from the UCI Machine Learning Repository, is a dataset that includes various chemical properties of red wines, such as acidity, alcohol content, and quality ratings.
+The goal of this step was to perform shrinkage methods in the hopes of producing a more interpretable, potentially more accurate model.
+Additionally, a new method of modeling the dataset was implemented for experimentation.
+
+Reference: UCI Machine Learning Repository - Red Wine Quality:  <https://archive.ics.uci.edu/ml/datasets/Wine+Quality>
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE, comment= NULL, results='hide'}
+##STEPWISE MODEL
+# Create a full model with all potential predictors
+full_model <- lm(quality ~ ., data = training_set)
+
+# Apply stepwise selection
+stepwise_model <- step(full_model, direction = "both",)
+
+
+#final_model_summary <- summary(stepwise_model)
+#print(final_model_summary)
+
+```
+
+## Shrinkage methods
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE }
+# Separate predictors (X) and response variable (y)
+X <- as.matrix(wine_data_sampled[, -12])  # Exclude the quality column
+y <- wine_data_sampled$quality
+
+# Scale predictors
+X <- scale(X)
+
+```
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE, comment= NULL}
+# Fit Ridge Regression using cross-validation
+ridge_cv <- cv.glmnet(x = as.matrix(training_set[, -12]), y = training_set$quality, alpha = 0)
+
+# lambda for Ridge
+#cat("Optimal lambda for Ridge:", ridge_cv$lambda.min, "\n")
+
+# Fit Lasso Regression using cross-validation
+lasso_cv <- cv.glmnet(x = as.matrix(training_set[, -12]), y = training_set$quality, alpha = 1)
+
+# lambda for Lasso
+#cat("Optimal lambda for Lasso:", lasso_cv$lambda.min, "\n")
+
+# Predictions on the test set using Ridge and Lasso
+ridge_preds <- predict(ridge_cv, newx = as.matrix(test_set[, -12]), s = ridge_cv$lambda.min)
+lasso_preds <- predict(lasso_cv, newx = as.matrix(test_set[, -12]), s = lasso_cv$lambda.min)
+
+# Evaluate performance
+mse_ridge <- mean((ridge_preds - test_set$quality)^2)
+mse_lasso <- mean((lasso_preds - test_set$quality)^2)
+#print(mse_ridge)
+#print(mse_lasso)
+#coef(ridge_cv, s=ridge_cv$lambda.min)
+#coef(lasso_cv, s=ridge_cv$lambda.min)
+```
+
+In an attempt to improve the predictive power in a model of the dataset, both Ridge Regression and LASSO Regression were performed on all of the variables of the dataset.
+The Ridge Regression model showed higher coefficients for most variables, with more penalization indicated by a lambda of (0.119), compared to the LASSO Regression model, which set several coefficients to zero, making a smaller model, with a lambda value of (0.016).
+This shows the model didn't have to perform much penalization to achieve good fit, due to several variables being determined not siginificant.
+The step-wise model, introduced in the previous step, selected a middle ground, with a subset of predictors based on AIC.
+In terms of MSE, our step-wise model showed an MSE of 0.42, while the Ridge and LASSO models resulted in MSEs of 0.388 and 0.389, respectively.
+The Ridge model has the lowest MSE and is considered to have the best predictive performance on our test set.
+Considering the complexity, the LASSO model provided a more simple solution with fewer predictors.
+The step-wise model had an adjusted $R^2$ of 0.3333, indicating that approximately 33.33% of the variability in our response variable is accounted for by the model, which is meaningful for the size and complexity of the data.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE, comment= NULL}
+# Combine the values for Ridge and Lasso and stepwise
+observed <- test_set$quality
+ridge_preds <- predict(ridge_cv, newx = as.matrix(test_set[, -12]), s = ridge_cv$lambda.min)
+lasso_preds <- predict(lasso_cv, newx = as.matrix(test_set[, -12]), s = lasso_cv$lambda.min)
+stepwise_predict <- predict(stepwise_model, newdata = test_set)
+
+
+
+# plot with observed vs. predicted values
+plot(observed, ridge_preds, col = "blue", pch = 16, cex= 1, main = "Observed vs. Predicted Values", xlab = "Observed Quality", ylab = "Predicted Quality")
+points(observed, lasso_preds, col = "red", pch = 16, cex= 1)
+points(observed, stepwise_predict, col= "green", pch=16, cex= 1)
+legend("topleft", legend = c("Ridge", "Lasso", "stepwise"), col = c("blue", "red", "green"), pch = 16)
+
+
+
+```
+
+As indicated by the plot, the predictions resulting from the Ridge Regression, LASSO Regression and step-wise models are quite close to each other, as indicated by the overlapping blue, red, and green dots.
+This indicates that all the models performed similarly when applied to the dataset.
+Overall, the graph indicates that applying the shrinkage methods(Ridge and LASSO) and step-wise selection have provided regression models with comparable predictions of wine quality.
+
+## Innovation- Neural Net
+
+We decided to build a basic neural network to help explain and predict our dataset with more accuracy than our step-wise model.
+Given that our most accurate linear model could only account for 33% of the variability, we hypothesized that a neural network would be an interesting avenue to explore for its ability to model non-linear and complex relationships.
+Due to the complex nature of wine quality determination, where many factors interact in different ways, the flexibility and adaptability of neural networks make them ideally suited for this task.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+
+# set up inputs 
+training_set$quality <- as.numeric(training_set$quality)
+test_set$quality <- as.numeric(test_set$quality)
+
+# Scaling the data 
+maxs <- apply(training_set, 2, max) 
+mins <- apply(training_set, 2, min)
+scaled_training_set <- as.data.frame(scale(training_set, center = mins, scale = maxs - mins))
+
+# Building the neural network model
+library(neuralnet)
+set.seed(123) # for reproducibility
+modelN <- neuralnet(
+    quality ~ volatile.acidity + residual.sugar + total.sulfur.dioxide + sulphates + alcohol + fixed.acidity + citric.acid + chlorides + density + pH, 
+    data = scaled_training_set,
+    hidden = c(4, 2),
+    linear.output = FALSE 
+)
+
+```
+
+To build the model, the existing predictors used in the step-wise model were chosen for their significance.
+Based on this, additional predictors were added and taken out manually in order to compare to determine if it improved the accuracy of the model.
+By examining the $RMSE$ and $R^2$ of the that was associated with each manual addition of a predictor, it was found that the neural network was most accurate when incorporating every predictor of the dataset except 'free.sulfur.dioxide'.
+For the model, a fairly standard architecture was chosen with two hidden layers.
+The first layer contained 4 neurons and the second contained 2 neurons, as indicated by **`hidden=c(4,2)`**.
+
+The neural network model, based on the human brain, attempts to simulate how a human might make decisions.
+It does this by considering all the different variables and their complex interactions, in order to make a prediction about the wine's quality.
+The model is formed of multiple layers of nodes(neurons) that form connections with each other.
+Each connection formed between the layers is associated with a certain weight, or importance.
+The training process involves adjusting the weight of each connection until the network's predictions match the observed values of quality as closely as possible.
+Neural models have few assumptions that need to be met for training as they are already made to fit non-linear data, as long as the data set that is used to train the model is robust and representative of the population, this will leed to a higher predictive power.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE,}
+# Plotting the neural network
+plot(modelN, rep = "best")
+```
+
+Above is a plot of the neural network that was constructed.
+Each node (or neuron) in the hidden layers is connected to all nodes in the previous and subsequent layers, as shown by the lines between them.
+The weights(the numbers on the lines) determine the strength and direction(positive or negative influence) of the connections.
+The error (2.646477) reported at the bottom of the plot indicates how well the neural network has fitted the training data; the lower the error, the better the fit.
+The number of steps (1406) indicates how many adjustments the training algorithm made to find a solution.
+
+```{r,echo=FALSE, message = FALSE, warning = FALSE}
+# Predicting on the test data 
+scaled_test_set <- as.data.frame(scale(test_set, center = mins, scale = maxs - mins))
+pred <- predict(modelN, scaled_test_set)
+
+# calculate RMSE
+rmse <- sqrt(mean((pred - scaled_test_set$quality)^2))
+#print(rmse)
+
+# Calculate the total sum of squares
+SS_total <- sum((scaled_test_set$quality - mean(scaled_test_set$quality))^2)
+
+# Calculate the residual sum of squares
+SS_res <- sum((scaled_test_set$quality- pred)^2)
+
+# Calculate R-squared
+R_squared <- 1 - (SS_res / SS_total)
+
+# Print the R-squared value
+#print(R_squared)
+
+```
+
+Next, some test statistics for the neural network model were derived in order to compare the model to the step-wise linear model created in the previous step.
+We decided to proceed with $RMSE$ and $R^2$ as our test statistics for comparison.
+In the context of neural networks, $RMSE$ provides a more accurate $MSE$ calculation and would enable us to better compare and contrast this model to our step-wise model.
+Thus, the values below were produced:
+
+Neural Network Model (NNM): $RMSE = 0.11$ $R^2=0.36.$
+
+Step wise Model (SWM): $MSE=0.6526 \quad R^2=0.33$
+
+Comparatively the neural network model has a significantly lower $RSE$ and $R^2$ than the step-wise model, signifying that its predictions are closer to the actual values derived from the data set and it accounts for more of the variability in the data set.
